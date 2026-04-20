@@ -13,24 +13,72 @@ type Props = {
   file: File | null;
 };
 
-const colorToCss = (
-  color: { rgb?: string; theme?: number; tint?: number } | undefined,
-): string | undefined => {
-  if (!color?.rgb) return undefined;
-  const rgb = color.rgb.length === 8 ? color.rgb.slice(2) : color.rgb;
-  return `#${rgb}`;
-};
-
 type XlsxColor = { rgb?: string; theme?: number; tint?: number };
 type XlsxFill =
   | { type: 'solid'; color?: XlsxColor }
   | { type: 'pattern'; foreground?: XlsxColor; background?: XlsxColor }
   | { type: 'gradient' };
 
+// Office 2013+ default theme palette. Used as a fallback when the workbook
+// references theme colors but we don't parse the per-file theme1.xml.
+// Index order follows SpreadsheetML's `theme=""` attribute (not DrawingML's
+// internal ordering), so 0=lt1, 1=dk1, 2=lt2, 3=dk2, 4..9=accent1..6.
+const THEME_FALLBACK = [
+  'FFFFFF', // lt1 (background 1)
+  '000000', // dk1 (text 1)
+  'E7E6E6', // lt2 (background 2)
+  '44546A', // dk2 (text 2)
+  '4472C4', // accent1
+  'ED7D31', // accent2
+  'A5A5A5', // accent3
+  'FFC000', // accent4
+  '5B9BD5', // accent5
+  '70AD47', // accent6
+  '0563C1', // hyperlink
+  '954F72', // followed hyperlink
+];
+
+const hexToRgb = (hex: string): [number, number, number] => {
+  const h = hex.length === 8 ? hex.slice(2) : hex;
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+};
+
+const rgbToHex = (r: number, g: number, b: number): string => {
+  const clamp = (n: number) => Math.max(0, Math.min(255, Math.round(n)));
+  return [r, g, b].map((n) => clamp(n).toString(16).padStart(2, '0')).join('');
+};
+
+// OOXML tint: [-1, 1]. Applied in HSL luminance space. Cheap RGB approximation
+// is close enough for PoC fidelity.
+const applyTint = (hex: string, tint: number | undefined): string => {
+  if (!tint) return hex;
+  const [r, g, b] = hexToRgb(hex);
+  const t = Math.max(-1, Math.min(1, tint));
+  const shift = (c: number) => (t < 0 ? c * (1 + t) : c + (255 - c) * t);
+  return rgbToHex(shift(r), shift(g), shift(b));
+};
+
+const resolveColor = (color: XlsxColor | undefined): string | undefined => {
+  if (!color) return undefined;
+  let hex: string | undefined;
+  if (color.rgb) {
+    hex = color.rgb.length === 8 ? color.rgb.slice(2) : color.rgb;
+  } else if (typeof color.theme === 'number') {
+    hex = THEME_FALLBACK[color.theme];
+  }
+  if (!hex) return undefined;
+  return `#${applyTint(hex, color.tint)}`;
+};
+
 type StyleMap = {
   bold: boolean | undefined;
   italic: boolean | undefined;
   underline: boolean | undefined;
+  strikethrough: boolean | undefined;
   fontSize: number | undefined;
   fontFamily: string | undefined;
   fontColor: XlsxColor | undefined;
@@ -42,6 +90,33 @@ type StyleMap = {
 type XlsxCell = {
   value: () => unknown;
   style: <K extends keyof StyleMap>(name: K) => StyleMap[K];
+};
+
+const verticalToFlex = (v: string | undefined): string => {
+  switch (v) {
+    case 'top':
+      return 'flex-start';
+    case 'center':
+      return 'center';
+    case 'bottom':
+    default:
+      return 'flex-end';
+  }
+};
+
+const horizontalToFlex = (h: string | undefined): string => {
+  switch (h) {
+    case 'center':
+    case 'centerContinuous':
+      return 'center';
+    case 'right':
+    case 'end':
+      return 'flex-end';
+    case 'left':
+    case 'start':
+    default:
+      return 'flex-start';
+  }
 };
 
 const toStyledCell = (cell: XlsxCell): StyledCell => {
@@ -56,11 +131,23 @@ const toStyledCell = (cell: XlsxCell): StyledCell => {
     value = String(rawValue);
   }
 
-  const style: React.CSSProperties = {};
+  const style: React.CSSProperties = {
+    display: 'flex',
+    width: '100%',
+    height: '100%',
+    padding: '2px 4px',
+    boxSizing: 'border-box',
+    lineHeight: 1.2,
+    overflow: 'hidden',
+  };
 
   if (cell.style('bold')) style.fontWeight = 'bold';
   if (cell.style('italic')) style.fontStyle = 'italic';
-  if (cell.style('underline')) style.textDecoration = 'underline';
+
+  const decorations: string[] = [];
+  if (cell.style('underline')) decorations.push('underline');
+  if (cell.style('strikethrough')) decorations.push('line-through');
+  if (decorations.length > 0) style.textDecoration = decorations.join(' ');
 
   const fontSize = cell.style('fontSize');
   if (fontSize) style.fontSize = `${fontSize}px`;
@@ -68,24 +155,26 @@ const toStyledCell = (cell: XlsxCell): StyledCell => {
   const fontFamily = cell.style('fontFamily');
   if (fontFamily) style.fontFamily = fontFamily;
 
-  const fontColor = colorToCss(cell.style('fontColor'));
+  const fontColor = resolveColor(cell.style('fontColor'));
   if (fontColor) style.color = fontColor;
 
   const fill = cell.style('fill');
   if (fill?.type === 'solid') {
-    const bg = colorToCss(fill.color);
+    const bg = resolveColor(fill.color);
     if (bg) style.backgroundColor = bg;
   } else if (fill?.type === 'pattern') {
-    const bg = colorToCss(fill.foreground ?? fill.background);
+    const bg = resolveColor(fill.foreground ?? fill.background);
     if (bg) style.backgroundColor = bg;
   }
 
   const horizontal = cell.style('horizontalAlignment');
-  if (horizontal) style.textAlign = horizontal as React.CSSProperties['textAlign'];
+  style.justifyContent = horizontalToFlex(horizontal);
+  if (horizontal) {
+    style.textAlign = horizontal as React.CSSProperties['textAlign'];
+  }
 
   const vertical = cell.style('verticalAlignment');
-  if (vertical === 'center') style.verticalAlign = 'middle';
-  else if (vertical) style.verticalAlign = vertical as React.CSSProperties['verticalAlign'];
+  style.alignItems = verticalToFlex(vertical);
 
   return { value, style };
 };
@@ -94,19 +183,7 @@ const StyledViewer: DataViewerComponent<StyledCell> = ({
   cell,
 }: DataViewerProps<StyledCell>) => {
   if (!cell) return null;
-  return (
-    <div
-      style={{
-        width: '100%',
-        height: '100%',
-        padding: '4px',
-        boxSizing: 'border-box',
-        ...cell.style,
-      }}
-    >
-      {cell.value}
-    </div>
-  );
+  return <div style={cell.style}>{cell.value}</div>;
 };
 
 export const PopulateAndSpreadsheet = ({ file }: Props) => {

@@ -9,6 +9,9 @@ import {
   exportToolBarItem,
   transformExcelToFortune,
 } from '@corbe30/fortune-excel';
+import { applyTableStyles } from '../excel/applyTableStyles';
+import { forceWrapOnOverflowCollisions } from '../excel/forceWrapOnOverflowCollisions';
+import { backfillInlineStringV } from '../excel/backfillInlineStringV';
 
 type Props = {
   file: File | null;
@@ -27,9 +30,38 @@ export const FortuneSheet = ({ file }: Props) => {
       setKey((k) => k + 1);
       return;
     }
-    transformExcelToFortune(file, setSheets, setKey, sheetRef).catch((err) => {
-      console.error('fortune-excel import failed', err);
-    });
+    let cancelled = false;
+    let raw: Sheet[] | null = null;
+    const capture = (next: Sheet[]) => {
+      raw = next;
+      setSheets(next);
+    };
+    // fortune-excel's transformExcelToFortune schedules a setTimeout that
+    // calls sheetRef.current.setColumnWidth / setRowHeight for each sheet,
+    // which races the Workbook's multi-sheet mount and throws
+    // "sheet not found" on files with >1 sheet. fortune-sheet reads
+    // config.columnlen / config.rowlen directly from the sheet data at
+    // render time, so the imperative call is redundant. Pass a ref whose
+    // `.current` is always null; fortune-excel uses optional-chaining, so
+    // the entire imperative pass becomes a no-op.
+    const shimRef = { current: null } as { current: null };
+    transformExcelToFortune(file, capture, setKey, shimRef)
+      .then(async () => {
+        if (cancelled || !raw) return;
+        const tablePatched = await applyTableStyles(file, raw);
+        const inlineBackfilled = backfillInlineStringV(tablePatched);
+        const patched = forceWrapOnOverflowCollisions(inlineBackfilled);
+        if (!cancelled) {
+          setSheets(patched);
+          setKey((k) => k + 1);
+        }
+      })
+      .catch((err) => {
+        console.error('fortune-excel import failed', err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [file]);
 
   return (
