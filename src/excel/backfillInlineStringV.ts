@@ -1,9 +1,7 @@
-import type { Sheet } from '@fortune-sheet/core';
-
-type CellV = NonNullable<NonNullable<Sheet['celldata']>[number]['v']>;
+import type { Cell, Sheet } from '@fortune-sheet/core';
 
 // Concatenate the text of an inlineStr cell's rich-text runs.
-const extractInlineStrText = (v: CellV): string | null => {
+const extractInlineStrText = (v: Cell): string | null => {
   const ct = v.ct as { t?: string; s?: Array<{ v?: unknown }> } | undefined;
   if (ct?.t !== 'inlineStr' || !Array.isArray(ct.s) || ct.s.length === 0) {
     return null;

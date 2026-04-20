@@ -1,6 +1,4 @@
-import type { Sheet } from '@fortune-sheet/core';
-
-type CellV = NonNullable<NonNullable<Sheet['celldata']>[number]['v']>;
+import type { Cell, Sheet } from '@fortune-sheet/core';
 
 const DEFAULT_COLLEN = 72;
 // Cell horizontal padding budget that fortune-sheet reserves for borders +
@@ -15,7 +13,7 @@ const getMeasureCtx = (): CanvasRenderingContext2D | null => {
   return sharedCtx;
 };
 
-const extractText = (v: CellV): string => {
+const extractText = (v: Cell): string => {
   if (typeof v.v === 'string') return v.v;
   if (typeof v.v === 'number') return String(v.v);
   if (typeof v.m === 'string') return v.m;
@@ -29,7 +27,7 @@ const extractText = (v: CellV): string => {
   return '';
 };
 
-const hasContent = (v: CellV | null | undefined): boolean => {
+const hasContent = (v: Cell | null | undefined): boolean => {
   if (!v) return false;
   return extractText(v).length > 0;
 };
@@ -53,7 +51,7 @@ export const forceWrapOnOverflowCollisions = (sheets: Sheet[]): Sheet[] => {
       v: entry.v ? { ...entry.v } : entry.v,
     }));
 
-    const cellByKey = new Map<string, CellV | null | undefined>();
+    const cellByKey = new Map<string, Cell | null | undefined>();
     for (const entry of nextCelldata) {
       cellByKey.set(`${entry.r}:${entry.c}`, entry.v ?? null);
     }

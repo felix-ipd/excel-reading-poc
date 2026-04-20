@@ -1,9 +1,9 @@
 import type { Sheet } from '@fortune-sheet/core';
 
-type MergeEntry = { r: number; c: number; rs: number; cs: number };
+type MergeMap = NonNullable<NonNullable<Sheet['config']>['merge']>;
 
 const foldMergesIntoMax = (
-  merges: Record<string, MergeEntry> | undefined,
+  merges: MergeMap | undefined,
   runningMaxR: number,
   runningMaxC: number,
 ): { maxR: number; maxC: number } => {
@@ -30,11 +30,7 @@ export const bindDisplayBounds = (sheets: Sheet[]): Sheet[] => {
         if (entry.c > maxC) maxC = entry.c;
       }
     }
-    const folded = foldMergesIntoMax(
-      sheet.config?.merge as Record<string, MergeEntry> | undefined,
-      maxR,
-      maxC,
-    );
+    const folded = foldMergesIntoMax(sheet.config?.merge, maxR, maxC);
     maxR = folded.maxR;
     maxC = folded.maxC;
 

@@ -1,12 +1,10 @@
-import type { Sheet } from '@fortune-sheet/core';
+import type { Cell, Sheet } from '@fortune-sheet/core';
 import { loadXlsx } from './xlsxZip';
 import { parseTheme } from './theme';
 import { parseDxfs, type Dxf, type BorderSide } from './dxf';
 import { parseTableStyles, type TableElementType } from './tableStyles';
 import { indexSheetTables, parseTable, type CellRange, type TableDef } from './tables';
 import { resolveColor, type ThemePalette } from './colors';
-
-type CellV = NonNullable<NonNullable<Sheet['celldata']>[number]['v']>;
 
 type EffectiveStyle = {
   bg?: string;
@@ -101,18 +99,18 @@ const upsertCell = (
   celldata: NonNullable<Sheet['celldata']>,
   r: number,
   c: number,
-): CellV => {
+): Cell => {
   const existing = celldata.find((entry) => entry.r === r && entry.c === c);
   if (existing) {
     if (!existing.v) existing.v = {};
-    return existing.v as CellV;
+    return existing.v as Cell;
   }
-  const v: CellV = {};
+  const v: Cell = {};
   celldata.push({ r, c, v });
   return v;
 };
 
-const applyEffectiveToCell = (v: CellV, eff: EffectiveStyle) => {
+const applyEffectiveToCell = (v: Cell, eff: EffectiveStyle) => {
   if (eff.bg !== undefined) v.bg = eff.bg;
   if (eff.fc !== undefined) v.fc = eff.fc;
   if (eff.bl !== undefined) v.bl = eff.bl;
