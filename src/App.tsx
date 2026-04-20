@@ -33,12 +33,12 @@ export const App = () => {
         </label>
       </header>
 
-      <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-1">
-        <section className="flex flex-col rounded border border-gray-700">
+      <div className="flex flex-col items-center gap-4">
+        <section className="flex w-fit max-w-full flex-col rounded border border-gray-700">
           <h2 className="bg-gray-800 px-3 py-2 text-sm font-semibold">
             fortune-sheet + fortune-excel
           </h2>
-          <div className="flex-1">
+          <div>
             <FortuneSheet file={file} />
           </div>
         </section>

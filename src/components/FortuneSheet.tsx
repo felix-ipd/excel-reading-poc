@@ -3,15 +3,12 @@ import { Workbook } from '@fortune-sheet/react';
 import type { WorkbookInstance } from '@fortune-sheet/react';
 import type { Sheet } from '@fortune-sheet/core';
 import '@fortune-sheet/react/dist/index.css';
-import {
-  FortuneExcelHelper,
-  importToolBarItem,
-  exportToolBarItem,
-  transformExcelToFortune,
-} from '@corbe30/fortune-excel';
+import { transformExcelToFortune } from '@corbe30/fortune-excel';
 import { applyTableStyles } from '../excel/applyTableStyles';
 import { forceWrapOnOverflowCollisions } from '../excel/forceWrapOnOverflowCollisions';
 import { backfillInlineStringV } from '../excel/backfillInlineStringV';
+import { bindDisplayBounds } from '../excel/bindDisplayBounds';
+import { measureSheet } from '../excel/measureSheet';
 
 type Props = {
   file: File | null;
@@ -23,10 +20,12 @@ export const FortuneSheet = ({ file }: Props) => {
   const sheetRef = useRef<WorkbookInstance | null>(null);
   const [key, setKey] = useState(0);
   const [sheets, setSheets] = useState<Sheet[]>(emptySheets);
+  const [activeSheetIndex, setActiveSheetIndex] = useState(0);
 
   useEffect(() => {
     if (!file) {
       setSheets(emptySheets);
+      setActiveSheetIndex(0);
       setKey((k) => k + 1);
       return;
     }
@@ -35,6 +34,7 @@ export const FortuneSheet = ({ file }: Props) => {
     const capture = (next: Sheet[]) => {
       raw = next;
       setSheets(next);
+      setActiveSheetIndex(0);
     };
     // fortune-excel's transformExcelToFortune schedules a setTimeout that
     // calls sheetRef.current.setColumnWidth / setRowHeight for each sheet,
@@ -50,9 +50,10 @@ export const FortuneSheet = ({ file }: Props) => {
         if (cancelled || !raw) return;
         const tablePatched = await applyTableStyles(file, raw);
         const inlineBackfilled = backfillInlineStringV(tablePatched);
-        const patched = forceWrapOnOverflowCollisions(inlineBackfilled);
+        const wrapPatched = forceWrapOnOverflowCollisions(inlineBackfilled);
+        const bounded = bindDisplayBounds(wrapPatched);
         if (!cancelled) {
-          setSheets(patched);
+          setSheets(bounded);
           setKey((k) => k + 1);
         }
       })
@@ -64,24 +65,51 @@ export const FortuneSheet = ({ file }: Props) => {
     };
   }, [file]);
 
+  const safeIndex = Math.min(activeSheetIndex, Math.max(0, sheets.length - 1));
+  const activeSheet = sheets[safeIndex] ?? emptySheets[0];
+  const { width, height } = measureSheet(activeSheet);
+
   return (
-    <div className="flex h-full w-full flex-col">
-      <FortuneExcelHelper
-        setKey={setKey}
-        setSheets={setSheets}
-        sheetRef={sheetRef}
-        config={{
-          import: { xlsx: true, csv: true },
-          export: { xlsx: true, csv: true },
+    <div className="flex flex-col gap-2">
+      {/* {sheets.length > 1 && ( */}
+      {/*   <select */}
+      {/*     value={safeIndex} */}
+      {/*     onChange={(e) => { */}
+      {/*       setActiveSheetIndex(Number(e.target.value)); */}
+      {/*       setKey((k) => k + 1); */}
+      {/*     }} */}
+      {/*     className="self-start rounded border border-gray-300 bg-white px-3 py-1 text-sm text-black" */}
+      {/*   > */}
+      {/*     {sheets.map((s, i) => ( */}
+      {/*       <option key={s.id ?? `${i}-${s.name}`} value={i}> */}
+      {/*         {s.name} */}
+      {/*       </option> */}
+      {/*     ))} */}
+      {/*   </select> */}
+      {/* )} */}
+      <div
+        className="overflow-auto"
+        style={{
+          maxWidth: 'calc(100vw - 4rem)',
+          maxHeight: 'calc(100vh - 12rem)',
         }}
-      />
-      <div className="min-h-[500px] flex-1 bg-white text-black">
-        <Workbook
-          key={key}
-          ref={sheetRef}
-          data={sheets}
-          customToolbarItems={[importToolBarItem(), exportToolBarItem()]}
-        />
+      >
+        <div
+          className="bg-white text-black"
+          style={{ width, height }}
+        >
+          <Workbook
+            key={`${key}-${safeIndex}`}
+            ref={sheetRef}
+            data={[activeSheet]}
+            allowEdit={false}
+            showToolbar={false}
+            showFormulaBar={false}
+            showSheetTabs={false}
+            cellContextMenu={[]}
+            headerContextMenu={[]}
+          />
+        </div>
       </div>
     </div>
   );

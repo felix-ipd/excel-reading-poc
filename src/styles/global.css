@@ -1,1 +1,21 @@
 @import 'tailwindcss';
+
+/*
+ * Read-only view overrides for fortune-sheet.
+ *
+ * fortune-sheet's `calcRowColSize` appends a fixed +120px (maxColumnlen)
+ * and +80px trailing buffer to ctx.ch_width / ctx.rh_height for scroll
+ * overshoot (see @fortune-sheet/core:63469). That makes the scroll-size
+ * tracker elements slightly larger than the canvas, so the built-in
+ * scrollbar containers always show scrollbars — even when the whole
+ * data footprint is already visible.
+ *
+ * For this read-only viewer we never need those scrollbars (the outer
+ * wrapper is sized to the data, with viewport caps that use the browser
+ * scrollbars when content genuinely exceeds the viewport). Hide
+ * fortune-sheet's inner scrollbars.
+ */
+.luckysheet-scrollbar-x,
+.luckysheet-scrollbar-y {
+  display: none !important;
+}
